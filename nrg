@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Reflective Card Widget</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #050505;
+            font-family: 'Courier New', Courier, monospace;
+            user-select: none;
+        }
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+        #ui-layer {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            pointer-events: none; /* Let clicks pass through to canvas */
+            color: #39FF14;
+            text-shadow: 0 0 10px #39FF14;
+            z-index: 10;
+            transition: opacity 0.5s;
+        }
+        #ui-layer h1 {
+            font-size: 1.2rem;
+            letter-spacing: 2px;
+            margin: 0;
+            text-transform: uppercase;
+        }
+        #ui-layer p {
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+        .instruction {
+            position: absolute;
+            bottom: 100px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 0.9rem;
+            opacity: 0.5;
+            pointer-events: none;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0.3; }
+        }
+    </style>
+    <!-- Load Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="ui-layer">
+        <h1>Neon Industries</h1>
+        <p>Identity Verification</p>
+    </div>
+    
+    <div id="instruction-text" class="instruction">TAP WALLET TO EJECT</div>
+
+    <div id="canvas-container"></div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const COLORS = {
+            background: 0x050505,
+            neonGreen: 0x39FF14,
+            darkMetal: 0x111111,
+            text: '#ffffff'
+        };
+
+        // --- SCENE SETUP ---
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(COLORS.background);
+        scene.fog = new THREE.FogExp2(COLORS.background, 0.03); // Adds depth
+
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+        camera.position.set(0, 0, 8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.toneMapping = THREE.ReinhardToneMapping;
+        renderer.toneMappingExposure = 1.5;
+        container.appendChild(renderer.domElement);
+
+        // --- LIGHTING (Crucial for reflection) ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+
+        // A bright point light that will reflect off the card's surface
+        const mainLight = new THREE.PointLight(0xffffff, 1.5, 20);
+        mainLight.position.set(5, 5, 5);
+        scene.add(mainLight);
+
+        // A green rim light for the neon atmosphere
+        const neonLight = new THREE.PointLight(COLORS.neonGreen, 2, 15);
+        neonLight.position.set(-5, 0, 2);
+        scene.add(neonLight);
+
+        // A bottom light to illuminate the wallet
+        const bottomLight = new THREE.PointLight(0x004400, 1, 10);
+        bottomLight.position.set(0, -5, 3);
+        scene.add(bottomLight);
+
+        // --- TEXTURE GENERATION ---
+        function createCardTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 1024;
+            canvas.height = 512; // 2:1 Aspect ratio roughly
+            const ctx = canvas.getContext('2d');
+
+            // Background - Dark gradient
+            const gradient = ctx.createLinearGradient(0, 0, 1024, 512);
+            gradient.addColorStop(0, '#000000');
+            gradient.addColorStop(1, '#1a1a1a');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, 1024, 512);
+
+            // Neon Border on texture
+            ctx.strokeStyle = '#39FF14';
+            ctx.lineWidth = 20;
+            ctx.strokeRect(20, 20, 984, 472);
+
+            // Text content
+            ctx.fillStyle = '#39FF14';
+            ctx.font = 'bold 80px Courier New';
+            ctx.shadowColor = '#39FF14';
+            ctx.shadowBlur = 20;
+            ctx.fillText('NEON CORP', 80, 150);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.shadowBlur = 0;
+            ctx.font = '40px Arial';
+            ctx.fillText('FULL STACK DEVELOPER', 80, 220);
+
+            ctx.font = 'bold 60px Arial';
+            ctx.fillText('JOHN DOE', 80, 380);
+
+            ctx.font = '30px monospace';
+            ctx.fillStyle = '#888888';
+            ctx.fillText('ID: 8492-AE-22', 700, 450);
+
+            // Chip graphic
+            ctx.fillStyle = '#bfbfbf';
+            ctx.fillRect(80, 280, 120, 90);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(80, 280, 120, 90);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            return texture;
+        }
+
+        // --- OBJECTS ---
+
+        // 1. The Wallet (The Sleeve)
+        const walletGroup = new THREE.Group();
+        scene.add(walletGroup);
+
+        const walletGeo = new THREE.BoxGeometry(4.2, 2.5, 0.3);
+        const walletMat = new THREE.MeshStandardMaterial({
+            color: 0x111111,
+            roughness: 0.8,
+            metalness: 0.5
+        });
+        const walletMesh = new THREE.Mesh(walletGeo, walletMat);
+        // Cut the top open visually (we just render it lower)
+        walletMesh.position.y = -2.5; 
+        walletGroup.add(walletMesh);
+
+        // Add a glowing strip on the wallet
+        const stripGeo = new THREE.BoxGeometry(4.2, 0.05, 0.32);
+        const stripMat = new THREE.MeshBasicMaterial({ color: COLORS.neonGreen });
+        const strip = new THREE.Mesh(stripGeo, stripMat);
+        strip.position.y = -1.3; // Top edge of wallet
+        walletGroup.add(strip);
+
+
+        // 2. The Business Card
+        const cardGroup = new THREE.Group();
+        scene.add(cardGroup);
+
+        const cardGeometry = new THREE.BoxGeometry(3.5, 2.0, 0.05);
+        
+        // Front Texture
+        const frontTexture = createCardTexture();
+        
+        // Materials
+        // Face 4 and 5 are the large faces (front/back) on BoxGeometry logic usually, 
+        // but UV mapping depends. We'll use an array of materials.
+        // 0: right, 1: left, 2: top, 3: bottom, 4: front, 5: back
+        
+        const edgeMaterial = new THREE.MeshBasicMaterial({ color: COLORS.neonGreen });
+        const backMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0x111111,
+            metalness: 0.9,
+            roughness: 0.2,
+            clearcoat: 1.0,
+            clearcoatRoughness: 0.1
+        });
+        
+        const frontMaterial = new THREE.MeshPhysicalMaterial({
+            color: 0xffffff,
+            map: frontTexture,
+            metalness: 0.6,
+            roughness: 0.2,
+            clearcoat: 1.0, // Gives it that glass layer look
+            clearcoatRoughness: 0.1,
+            emissive: 0x000000
+        });
+
+        const materials = [
+            edgeMaterial, // right
+            edgeMaterial, // left
+            edgeMaterial, // top
+            edgeMaterial, // bottom
+            frontMaterial, // front
+            backMaterial  // back
+        ];
+
+        const cardMesh = new THREE.Mesh(cardGeometry, materials);
+        cardGroup.add(cardMesh);
+
+        // Initialize Card Position (Hidden in wallet)
+        const POS_HIDDEN_Y = -2.5;
+        const POS_SHOWN_Y = 0.5;
+        cardGroup.position.y = POS_HIDDEN_Y;
+        
+        // Add a dedicated point light attached to the card to make it glow
+        const cardGlow = new THREE.PointLight(COLORS.neonGreen, 0.5, 3);
+        cardGlow.position.z = 0.2;
+        cardGroup.add(cardGlow);
+
+        // --- INTERACTION LOGIC ---
+        
+        let isCardOut = false;
+        let targetY = POS_HIDDEN_Y;
+        let targetRotationX = 0;
+        let targetRotationY = 0;
+
+        // Mouse tracking
+        let mouseX = 0;
+        let mouseY = 0;
+        const windowHalfX = window.innerWidth / 2;
+        const windowHalfY = window.innerHeight / 2;
+
+        document.addEventListener('mousemove', onDocumentMouseMove);
+        document.addEventListener('touchmove', onDocumentTouchMove, { passive: false });
+        
+        // Click to toggle
+        document.addEventListener('mousedown', toggleCard);
+        document.addEventListener('touchstart', toggleCard, { passive: false });
+
+        function toggleCard(event) {
+            // Basic debounce logic handled by state transition smoothness
+            isCardOut = !isCardOut;
+            
+            if (isCardOut) {
+                targetY = POS_SHOWN_Y;
+                document.getElementById('instruction-text').innerText = "MOVE CURSOR TO ROTATE";
+                document.getElementById('instruction-text').style.animation = "none";
+                document.getElementById('instruction-text').style.opacity = "0.3";
+            } else {
+                targetY = POS_HIDDEN_Y;
+                // Reset rotation when putting back
+                targetRotationY = 0;
+                targetRotationX = 0;
+                document.getElementById('instruction-text').innerText = "TAP WALLET TO EJECT";
+                document.getElementById('instruction-text').style.animation = "pulse 2s infinite";
+            }
+        }
+
+        function onDocumentMouseMove(event) {
+            mouseX = (event.clientX - windowHalfX) / 200; // Scale down sensitivity
+            mouseY = (event.clientY - windowHalfY) / 200;
+        }
+        
+        function onDocumentTouchMove(event) {
+            if(event.touches.length > 0) {
+                // Prevent scrolling
+                event.preventDefault(); 
+                mouseX = (event.touches[0].clientX - windowHalfX) / 150;
+                mouseY = (event.touches[0].clientY - windowHalfY) / 150;
+            }
+        }
+
+        // --- ANIMATION LOOP ---
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 1. Smoothly interpolate Y position (Slide in/out)
+            cardGroup.position.y += (targetY - cardGroup.position.y) * 0.08;
+
+            // 2. Rotation Logic
+            if (isCardOut) {
+                // When out, rotate based on mouse position (360 feel)
+                // We add a base rotation + mouse influence
+                // Limit X rotation to prevent it flipping totally upside down if undesired, 
+                // but prompt asked for 360 turn.
+                
+                targetRotationY = mouseX * 2; // Left/Right full spin
+                targetRotationX = mouseY * 1.5; // Up/Down tilt
+
+                cardGroup.rotation.y += (targetRotationY - cardGroup.rotation.y) * 0.1;
+                cardGroup.rotation.x += (targetRotationX - cardGroup.rotation.x) * 0.1;
+            } else {
+                // When inside wallet, reset rotation slightly to fit
+                cardGroup.rotation.y += (0 - cardGroup.rotation.y) * 0.1;
+                cardGroup.rotation.x += (0 - cardGroup.rotation.x) * 0.1;
+            }
+
+            // 3. Floating Effect (Bobbing)
+            if (Math.abs(cardGroup.position.y - POS_SHOWN_Y) < 0.1 && isCardOut) {
+                const time = Date.now() * 0.001;
+                cardGroup.position.y = POS_SHOWN_Y + Math.sin(time * 2) * 0.05;
+            }
+
+            // 4. Dynamic Lights (simulate reflection moving)
+            const time = Date.now() * 0.0005;
+            mainLight.position.x = Math.sin(time) * 10;
+            mainLight.position.z = Math.cos(time) * 10;
+
+            renderer.render(scene, camera);
+        }
+
+        // --- RESIZE HANDLER ---
+        window.addEventListener('resize', onWindowResize, false);
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Start loop
+        animate();
+
+    </script>
+</body>
+</html>
